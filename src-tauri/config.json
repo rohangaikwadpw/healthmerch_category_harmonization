@@ -1,0 +1,9 @@
+{
+  "postgres": {
+    "connection_url": ""
+  },
+  "openai": {
+    "api_key": "",
+    "model": "gpt-5-nano"
+  }
+}
