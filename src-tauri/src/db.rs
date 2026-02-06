@@ -22,6 +22,13 @@ pub struct ProductData {
 }
 
 pub async fn connect(connection_url: &str) -> Result<Client> {
+    // Validate connection URL
+    if connection_url.is_empty() 
+        || connection_url.contains("YOUR_POSTGRES_URL_HERE")
+        || connection_url.contains("username:password") {
+        return Err(anyhow::anyhow!("invalid configuration"));
+    }
+
     // Create TLS connector for AWS RDS
     let tls_connector = TlsConnector::builder()
         .danger_accept_invalid_certs(true)

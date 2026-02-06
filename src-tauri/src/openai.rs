@@ -43,14 +43,22 @@ pub struct OpenAIClient {
     client: Client,
     api_key: String,
     model: String,
+    base_url: String,
 }
 
 impl OpenAIClient {
-    pub fn new(api_key: &str, model: &str) -> Self {
+    pub fn new(api_key: &str, model: &str, custom_base_url: Option<&str>) -> Self {
+        let base_url = custom_base_url
+            .unwrap_or("https://api.openai.com/v1")
+            .trim_end_matches('/')
+            .trim_end_matches("/chat/completions")
+            .to_string();
+        
         Self {
             client: Client::new(),
             api_key: api_key.to_string(),
             model: model.to_string(),
+            base_url,
         }
     }
 
@@ -110,14 +118,34 @@ Respond ONLY with the JSON array, no other text."#,
             }],
         };
 
-        let response = self
+        let mut req = self
             .client
-            .post("https://api.openai.com/v1/chat/completions")
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
+            .post(format!("{}/chat/completions", self.base_url))
+            .header("Content-Type", "application/json");
+        
+        // Only add Authorization header if API key is actually provided and not a placeholder
+        if !self.api_key.is_empty() 
+            && self.api_key != "not-required" 
+            && !self.api_key.contains("your-openai-api-key") {
+            req = req.header("Authorization", format!("Bearer {}", self.api_key));
+        }
+        
+        let response = req
             .json(&request)
             .send()
-            .await?;
+            .await
+            .map_err(|e| {
+                if e.is_connect() {
+                    anyhow::anyhow!(
+                        "Failed to connect to {}. Make sure your AI server is running and accessible.",
+                        self.base_url
+                    )
+                } else if e.is_timeout() {
+                    anyhow::anyhow!("Request timed out. Your AI server might be overloaded or not responding.")
+                } else {
+                    anyhow::anyhow!("Network error: {}", e)
+                }
+            })?;
 
         if !response.status().is_success() {
             let error_text = response.text().await?;
