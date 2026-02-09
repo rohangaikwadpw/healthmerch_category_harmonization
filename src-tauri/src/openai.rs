@@ -91,7 +91,7 @@ impl OpenAIClient {
             .join("\n");
 
         let prompt = format!(
-            r#"You are a product categorization expert. Map the following raw product categories to the standardized taxonomy provided.
+             r#"You are a product categorization expert. Map the following raw product categories to the standardized taxonomy provided.
 
 TAXONOMY:
 {}
