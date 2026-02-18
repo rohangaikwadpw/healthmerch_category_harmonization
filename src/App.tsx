@@ -38,6 +38,10 @@ interface ApiConfig {
 }
 
 function App() {
+  const [theme, setTheme] = useState(() => {
+    const savedTheme = localStorage.getItem('appTheme');
+    return savedTheme || 'night';
+  });
   const [hasApiKey, setHasApiKey] = useState(false);
   const [useCustomUrl, setUseCustomUrl] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState("");
@@ -53,10 +57,21 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState("");
+  const [showTaxonomyInfo, setShowTaxonomyInfo] = useState(false);
+  const [showProductsInfo, setShowProductsInfo] = useState(false);
 
   useEffect(() => {
     checkApiKey();
   }, []);
+
+  useEffect(() => {
+    document.body.setAttribute('data-theme', theme);
+    localStorage.setItem('appTheme', theme);
+  }, [theme]);
+
+  function toggleTheme() {
+    setTheme(theme === 'night' ? 'day' : 'night');
+  }
 
   async function checkApiKey() {
     try {
@@ -70,49 +85,85 @@ function App() {
     }
   }
 
+  function handleChangeApiKey() {
+    setHasApiKey(false);
+  }
+
+  async function handleSkipToTool() {
+    try {
+      const existingConfig = await invoke<ApiConfig | null>("get_api_key");
+      if (existingConfig && (existingConfig.api_key || existingConfig.api_base_url)) {
+        setHasApiKey(true);
+        await initializeApp();
+      } else {
+        setApiKeyError("Cannot skip: No API credentials found in the system. Please enter your API key or custom endpoint URL to continue.");
+      }
+    } catch (e) {
+      setApiKeyError(`Error: ${e}`);
+    }
+  }
+
   async function handleApiKeySubmit(e: React.FormEvent) {
     e.preventDefault();
     
-    // Validate based on mode
-    if (useCustomUrl) {
-      if (!customUrlInput.trim()) {
-        setApiKeyError("Please enter a custom endpoint URL");
-        return;
-      }
-      if (!customUrlInput.startsWith("http")) {
-        setApiKeyError("Custom URL must start with http:// or https://");
-        return;
-      }
-      // API key is optional for custom endpoints
-      const key = apiKeyInput.trim() || "not-required";
-      try {
-        setApiKeyError(null);
-        await invoke("save_api_key", { apiKey: key, apiBaseUrl: customUrlInput });
-        setHasApiKey(true);
-        setApiKeyInput("");
-        setCustomUrlInput("");
-        await initializeApp();
-      } catch (e) {
-        setApiKeyError(String(e));
+    // Check if user entered new credentials
+    const hasNewInput = useCustomUrl ? customUrlInput.trim() : apiKeyInput.trim();
+    
+    if (hasNewInput) {
+      // Validate and save new credentials
+      if (useCustomUrl) {
+        if (!customUrlInput.trim()) {
+          setApiKeyError("Please enter a custom endpoint URL");
+          return;
+        }
+        if (!customUrlInput.startsWith("http")) {
+          setApiKeyError("Custom URL must start with http:// or https://");
+          return;
+        }
+        // API key is optional for custom endpoints
+        const key = apiKeyInput.trim() || "not-required";
+        try {
+          setApiKeyError(null);
+          await invoke("save_api_key", { apiKey: key, apiBaseUrl: customUrlInput });
+          setHasApiKey(true);
+          setApiKeyInput("");
+          setCustomUrlInput("");
+          await initializeApp();
+        } catch (e) {
+          setApiKeyError(String(e));
+        }
+      } else {
+        // OpenAI mode - API key is required
+        if (!apiKeyInput.trim()) {
+          setApiKeyError("Please enter an API key");
+          return;
+        }
+        if (!apiKeyInput.startsWith("sk-")) {
+          setApiKeyError("Invalid API key format. OpenAI API keys start with 'sk-'");
+          return;
+        }
+        try {
+          setApiKeyError(null);
+          await invoke("save_api_key", { apiKey: apiKeyInput, apiBaseUrl: null });
+          setHasApiKey(true);
+          setApiKeyInput("");
+          await initializeApp();
+        } catch (e) {
+          setApiKeyError(String(e));
+        }
       }
     } else {
-      // OpenAI mode - API key is required
-      if (!apiKeyInput.trim()) {
-        setApiKeyError("Please enter an API key");
-        return;
-      }
-      if (!apiKeyInput.startsWith("sk-")) {
-        setApiKeyError("Invalid API key format. OpenAI API keys start with 'sk-'");
-        return;
-      }
+      // No new input - check for existing credentials in backend
       try {
-        setApiKeyError(null);
-        await invoke("save_api_key", { apiKey: apiKeyInput, apiBaseUrl: null });
-        setHasApiKey(true);
-        setApiKeyInput("");
-        await initializeApp();
+        const existingConfig = await invoke<ApiConfig | null>("get_api_key");
+        if (existingConfig && (existingConfig.api_key || existingConfig.api_base_url)) {
+          setHasApiKey(true);
+          await initializeApp();
+        } else {
+          setApiKeyError("No API credentials found. Please enter your API key or custom endpoint URL to continue.");
+        }
       } catch (e) {
-        setApiKeyError(String(e));
+        setApiKeyError(`Error: ${e}`);
       }
     }
   }
@@ -234,16 +285,16 @@ function App() {
   async function handleExport() {
     try {
       const savePath = await save({
-        filters: [{ name: "CSV", extensions: ["csv"] }],
-        defaultPath: "harmonized_products.csv",
+        filters: [{ name: "Excel", extensions: ["xlsx"] }],
+        defaultPath: "harmonized_products.xlsx",
       });
 
       if (!savePath) return;
 
       setLoading(true);
-      setLoadingMessage("Exporting CSV...");
+      setLoadingMessage("Exporting Excel file...");
 
-      const result = await invoke<string>("export_to_csv", {
+      const result = await invoke<string>("export_to_excel", {
         products: harmonizedProducts,
         outputPath: savePath,
       });
@@ -271,6 +322,11 @@ function App() {
 
   return (
     <div className="container">
+      {/* Theme Toggle Button */}
+      <button className="theme-toggle" onClick={toggleTheme} title={`Switch to ${theme === 'night' ? 'day' : 'night'} mode`}>
+        {theme === 'night' ? '☀️' : '🌙'}
+      </button>
+      
       {/* API Key Input Screen */}
       {!hasApiKey ? (
         <div className="api-key-screen">
@@ -343,7 +399,7 @@ function App() {
                   autoFocus
                 />
                 <p className="input-hint">
-                  Your API key will be stored temporarily and deleted when you close the application.
+                  Your API key will be stored locally in a .env file and persist across app restarts.
                 </p>
               </div>
             )}
@@ -357,14 +413,23 @@ function App() {
             <button type="submit" className="submit-button">
               Continue →
             </button>
+            
+            <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+              <button type="button" className="skip-to-tool-btn" onClick={handleSkipToTool}>
+                Skip to Category Harmonization Tool →
+              </button>
+              <p className="skip-hint">
+                Uses existing credentials from backend
+              </p>
+            </div>
           </form>
           
           <div className="info-box">
             <h3>🔒 Privacy & Security</h3>
             <ul>
-              <li>Your credentials are stored only in a local .env file</li>
-              <li>All data is automatically deleted when you close the app</li>
-              <li>You'll need to re-enter credentials each time you open the app</li>
+              <li>Your credentials are stored locally in a .env file</li>
+              <li>Credentials persist across app restarts - no need to re-enter</li>
+              <li>Your API key is never sent anywhere except to your configured AI endpoint</li>
               {!useCustomUrl && (
                 <li>Get your API key at <a href="https://platform.openai.com/api-keys" target="_blank">platform.openai.com</a></li>
               )}
@@ -381,8 +446,11 @@ function App() {
         <>
       <div className="header">
         <div className="icon-badge">🎯</div>
-        <h1>Category Harmonization Tool</h1>
+        <h1>Category Harmonization Console</h1>
         <p className="subtitle">AI-Powered Product Category Mapping</p>
+        <button className="change-api-key-btn" onClick={handleChangeApiKey} title="Back to API Configuration">
+          ← API Configuration
+        </button>
       </div>
 
       {/* Status Bar */}
@@ -427,6 +495,14 @@ function App() {
               <span className="step-number">1</span>
               <span className="step-icon">📚</span>
               <span className="step-text">Load Taxonomy CSV</span>
+              <button 
+                className="info-icon-btn" 
+                onClick={(e) => { e.stopPropagation(); setShowTaxonomyInfo(!showTaxonomyInfo); }}
+                title="View expected format"
+                type="button"
+              >
+                👁️
+              </button>
             </button>
             <button
               className="step-button"
@@ -436,6 +512,14 @@ function App() {
               <span className="step-number">2</span>
               <span className="step-icon">📄</span>
               <span className="step-text">Load Products CSV</span>
+              <button 
+                className="info-icon-btn" 
+                onClick={(e) => { e.stopPropagation(); setShowProductsInfo(!showProductsInfo); }}
+                title="View expected format"
+                type="button"
+              >
+                👁️
+              </button>
             </button>
             <button
               className="step-button"
@@ -465,8 +549,103 @@ function App() {
             >
               <span className="step-number">5</span>
               <span className="step-icon">📥</span>
-              <span className="step-text">Export CSV</span>
+              <span className="step-text">Export Excel</span>
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Taxonomy CSV Format Info Modal */}
+      {showTaxonomyInfo && (
+        <div className="format-modal" onClick={() => setShowTaxonomyInfo(false)}>
+          <div className="format-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="format-modal-header">
+              <h3>📚 Taxonomy CSV Format</h3>
+              <button className="close-btn" onClick={() => setShowTaxonomyInfo(false)}>✕</button>
+            </div>
+            <div className="format-modal-body">
+              <p><strong>Expected Columns:</strong></p>
+              <ul>
+                <li><code>main_category</code> - Primary category name</li>
+                <li><code>sub_category</code> - Secondary category name</li>
+                <li><code>sub_sub_category</code> - Tertiary category name</li>
+              </ul>
+              <p><strong>Example:</strong></p>
+              <div className="format-example">
+                <table className="format-table">
+                  <thead>
+                    <tr>
+                      <th>main_category</th>
+                      <th>sub_category</th>
+                      <th>sub_sub_category</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Health & Beauty</td>
+                      <td>Skincare</td>
+                      <td>Face Creams</td>
+                    </tr>
+                    <tr>
+                      <td>Electronics</td>
+                      <td>Computers</td>
+                      <td>Laptops</td>
+                    </tr>
+                    <tr>
+                      <td>Home & Garden</td>
+                      <td>Furniture</td>
+                      <td>Chairs</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="format-note">💡 The first row should contain column headers</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Products CSV Format Info Modal */}
+      {showProductsInfo && (
+        <div className="format-modal" onClick={() => setShowProductsInfo(false)}>
+          <div className="format-modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="format-modal-header">
+              <h3>📄 Products CSV Format</h3>
+              <button className="close-btn" onClick={() => setShowProductsInfo(false)}>✕</button>
+            </div>
+            <div className="format-modal-body">
+              <p><strong>Expected Columns:</strong></p>
+              <ul>
+                <li><code>product_id</code> - Unique product identifier</li>
+                <li><code>supplier_id</code> - Supplier identifier</li>
+              </ul>
+              <p><strong>Example:</strong></p>
+              <div className="format-example">
+                <table className="format-table">
+                  <thead>
+                    <tr>
+                      <th>product_id</th>
+                      <th>supplier_id</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>PROD001</td>
+                      <td>SUP123</td>
+                    </tr>
+                    <tr>
+                      <td>PROD002</td>
+                      <td>SUP456</td>
+                    </tr>
+                    <tr>
+                      <td>PROD003</td>
+                      <td>SUP789</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <p className="format-note">💡 The first row should contain column headers</p>
+            </div>
           </div>
         </div>
       )}

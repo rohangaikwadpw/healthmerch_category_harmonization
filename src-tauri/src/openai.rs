@@ -18,6 +18,14 @@ struct Message {
 #[derive(Debug, Deserialize)]
 struct ChatResponse {
     choices: Vec<Choice>,
+    usage: Option<Usage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Usage {
+    prompt_tokens: u32,
+    completion_tokens: u32,
+    total_tokens: u32,
 }
 
 #[derive(Debug, Deserialize)]
@@ -37,6 +45,13 @@ pub struct CategoryMapping {
     pub sub_category: String,
     pub sub_sub_category: String,
     pub confidence: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TokenUsageStats {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+    pub total_tokens: u32,
 }
 
 pub struct OpenAIClient {
@@ -66,23 +81,27 @@ impl OpenAIClient {
         &self,
         raw_categories: &[String],
         taxonomy: &str,
-    ) -> Result<HashMap<String, CategoryMapping>> {
+    ) -> Result<(HashMap<String, CategoryMapping>, TokenUsageStats)> {
         let mut mappings = HashMap::new();
+        let mut total_usage = TokenUsageStats::default();
 
         // Process in batches of 10 to avoid token limits
         for chunk in raw_categories.chunks(10) {
-            let batch_mappings = self.map_category_batch(chunk, taxonomy).await?;
+            let (batch_mappings, batch_usage) = self.map_category_batch(chunk, taxonomy).await?;
             mappings.extend(batch_mappings);
+            total_usage.input_tokens += batch_usage.input_tokens;
+            total_usage.output_tokens += batch_usage.output_tokens;
+            total_usage.total_tokens += batch_usage.total_tokens;
         }
 
-        Ok(mappings)
+        Ok((mappings, total_usage))
     }
 
     async fn map_category_batch(
         &self,
         raw_categories: &[String],
         taxonomy: &str,
-    ) -> Result<HashMap<String, CategoryMapping>> {
+    ) -> Result<(HashMap<String, CategoryMapping>, TokenUsageStats)> {
         let categories_list = raw_categories
             .iter()
             .enumerate()
@@ -163,6 +182,17 @@ Respond ONLY with the JSON array, no other text."#,
             mappings.insert(mapping.raw_category.clone(), mapping);
         }
 
-        Ok(mappings)
+        // Extract token usage
+        let usage = if let Some(usage_data) = chat_response.usage {
+            TokenUsageStats {
+                input_tokens: usage_data.prompt_tokens,
+                output_tokens: usage_data.completion_tokens,
+                total_tokens: usage_data.total_tokens,
+            }
+        } else {
+            TokenUsageStats::default()
+        };
+
+        Ok((mappings, usage))
     }
 }

@@ -20,6 +20,15 @@ pub struct AppState {
     pub mappings: Mutex<HashMap<String, CategoryMapping>>,
     pub api_key: Mutex<Option<String>>,
     pub api_base_url: Mutex<Option<String>>,
+    pub token_usage: Mutex<TokenUsage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TokenUsage {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
+    pub total_tokens: u32,
+    pub estimated_cost: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -260,12 +269,24 @@ async fn harmonize_categories(
         api_base_url.as_deref(),
     );
 
-    let mappings = openai_client
+    let (mappings, token_usage) = openai_client
         .map_categories(&unique_categories, &taxonomy)
         .await
         .map_err(|e| format!("OpenAI mapping failed: {}", e))?;
 
     *state.mappings.lock().unwrap() = mappings.clone();
+
+    // Calculate estimated cost (GPT-4 pricing: $0.03 per 1k input tokens, $0.06 per 1k output tokens)
+    let estimated_cost = (token_usage.input_tokens as f64 / 1000.0 * 0.03) 
+        + (token_usage.output_tokens as f64 / 1000.0 * 0.06);
+
+    // Store token usage in state
+    *state.token_usage.lock().unwrap() = TokenUsage {
+        input_tokens: token_usage.input_tokens,
+        output_tokens: token_usage.output_tokens,
+        total_tokens: token_usage.total_tokens,
+        estimated_cost,
+    };
 
     // Apply mappings to products
     let harmonized: Vec<HarmonizedProduct> = products
@@ -290,45 +311,120 @@ async fn harmonize_categories(
 }
 
 #[tauri::command]
-fn export_to_csv(products: Vec<HarmonizedProduct>, output_path: String) -> Result<String, String> {
-    let mut writer = csv::Writer::from_path(&output_path)
-        .map_err(|e| format!("Failed to create CSV file: {}", e))?;
+fn export_to_excel(
+    products: Vec<HarmonizedProduct>, 
+    output_path: String,
+    state: State<'_, AppState>
+) -> Result<String, String> {
+    use rust_xlsxwriter::*;
 
-    // Write header
-    writer
-        .write_record(&[
-            "id",
-            "product_id",
-            "supplier_id",
-            "product_name",
-            "raw_category",
-            "main_category",
-            "sub_category",
-            "sub_sub_category",
-            "confidence",
-        ])
-        .map_err(|e| format!("Failed to write header: {}", e))?;
+    // Ensure the output path has .xlsx extension
+    let output_path = if output_path.ends_with(".csv") {
+        output_path.replace(".csv", ".xlsx")
+    } else if !output_path.ends_with(".xlsx") {
+        format!("{}.xlsx", output_path)
+    } else {
+        output_path
+    };
 
-    // Write records
-    for p in &products {
-        writer
-            .write_record(&[
-                &p.id,
-                &p.product_id,
-                &p.supplier_id,
-                &p.product_name,
-                &p.raw_category,
-                &p.main_category,
-                &p.sub_category,
-                &p.sub_sub_category,
-                &p.confidence,
-            ])
-            .map_err(|e| format!("Failed to write record: {}", e))?;
+    let mut workbook = Workbook::new();
+
+    // Sheet 1: Harmonized Products
+    let sheet1 = workbook.add_worksheet().set_name("Harmonized Products")
+        .map_err(|e| format!("Failed to create worksheet: {}", e))?;
+
+    // Write headers for Sheet 1
+    let header_format = Format::new()
+        .set_bold()
+        .set_background_color(Color::Blue)
+        .set_font_color(Color::White);
+
+    let headers = vec![
+        "ID", "Product ID", "Supplier ID", "Product Name", 
+        "Raw Category", "Main Category", "Sub Category", 
+        "Sub-Sub Category", "Confidence"
+    ];
+
+    for (col, header) in headers.iter().enumerate() {
+        sheet1.write_string_with_format(0, col as u16, *header, &header_format)
+            .map_err(|e| format!("Failed to write header: {}", e))?;
     }
 
-    writer.flush().map_err(|e| format!("Failed to flush: {}", e))?;
+    // Write product data
+    for (row, product) in products.iter().enumerate() {
+        let row_num = (row + 1) as u32;
+        sheet1.write_string(row_num, 0, &product.id)
+            .map_err(|e| format!("Failed to write data: {}", e))?;
+        sheet1.write_string(row_num, 1, &product.product_id)
+            .map_err(|e| format!("Failed to write data: {}", e))?;
+        sheet1.write_string(row_num, 2, &product.supplier_id)
+            .map_err(|e| format!("Failed to write data: {}", e))?;
+        sheet1.write_string(row_num, 3, &product.product_name)
+            .map_err(|e| format!("Failed to write data: {}", e))?;
+        sheet1.write_string(row_num, 4, &product.raw_category)
+            .map_err(|e| format!("Failed to write data: {}", e))?;
+        sheet1.write_string(row_num, 5, &product.main_category)
+            .map_err(|e| format!("Failed to write data: {}", e))?;
+        sheet1.write_string(row_num, 6, &product.sub_category)
+            .map_err(|e| format!("Failed to write data: {}", e))?;
+        sheet1.write_string(row_num, 7, &product.sub_sub_category)
+            .map_err(|e| format!("Failed to write data: {}", e))?;
+        sheet1.write_string(row_num, 8, &product.confidence)
+            .map_err(|e| format!("Failed to write data: {}", e))?;
+    }
 
-    Ok(format!("Exported {} products to {}", products.len(), output_path))
+    // Auto-fit columns
+    for col in 0..9 {
+        sheet1.set_column_width(col, 15)
+            .map_err(|e| format!("Failed to set column width: {}", e))?;
+    }
+
+    // Sheet 2: Token Usage Statistics
+    let sheet2 = workbook.add_worksheet().set_name("Token Usage Statistics")
+        .map_err(|e| format!("Failed to create worksheet: {}", e))?;
+
+    let token_usage = state.token_usage.lock().unwrap().clone();
+
+    // Write headers for Sheet 2
+    sheet2.write_string_with_format(0, 0, "Metric", &header_format)
+        .map_err(|e| format!("Failed to write header: {}", e))?;
+    sheet2.write_string_with_format(0, 1, "Value", &header_format)
+        .map_err(|e| format!("Failed to write header: {}", e))?;
+
+    // Write token usage data
+    sheet2.write_string(1, 0, "Input Tokens")
+        .map_err(|e| format!("Failed to write data: {}", e))?;
+    sheet2.write_number(1, 1, token_usage.input_tokens as f64)
+        .map_err(|e| format!("Failed to write data: {}", e))?;
+
+    sheet2.write_string(2, 0, "Output Tokens")
+        .map_err(|e| format!("Failed to write data: {}", e))?;
+    sheet2.write_number(2, 1, token_usage.output_tokens as f64)
+        .map_err(|e| format!("Failed to write data: {}", e))?;
+
+    sheet2.write_string(3, 0, "Total Tokens")
+        .map_err(|e| format!("Failed to write data: {}", e))?;
+    sheet2.write_number(3, 1, token_usage.total_tokens as f64)
+        .map_err(|e| format!("Failed to write data: {}", e))?;
+
+    sheet2.write_string(4, 0, "Estimated Cost (USD)")
+        .map_err(|e| format!("Failed to write data: {}", e))?;
+    
+    let currency_format = Format::new().set_num_format("$0.0000");
+    sheet2.write_number_with_format(4, 1, token_usage.estimated_cost, &currency_format)
+        .map_err(|e| format!("Failed to write data: {}", e))?;
+
+    // Set column widths for Sheet 2
+    sheet2.set_column_width(0, 25)
+        .map_err(|e| format!("Failed to set column width: {}", e))?;
+    sheet2.set_column_width(1, 20)
+        .map_err(|e| format!("Failed to set column width: {}", e))?;
+
+    // Save the workbook
+    workbook.save(&output_path)
+        .map_err(|e| format!("Failed to save Excel file: {}", e))?;
+
+    Ok(format!("Exported {} products with token usage statistics to {}", products.len(), output_path))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -344,6 +440,7 @@ pub fn run() {
             mappings: Mutex::new(HashMap::new()),
             api_key: Mutex::new(None),
             api_base_url: Mutex::new(None),
+            token_usage: Mutex::new(TokenUsage::default()),
         })
         .invoke_handler(tauri::generate_handler![
             save_api_key,
@@ -355,19 +452,8 @@ pub fn run() {
             parse_input_csv,
             fetch_products_from_db,
             harmonize_categories,
-            export_to_csv,
+            export_to_excel,
         ])
-        .on_window_event(|_window, event| {
-            if let tauri::WindowEvent::CloseRequested { .. } = event {
-                // Delete API key when window closes
-                let _ = std::fs::remove_file(".env");
-            }
-        })
-        .setup(|_app| {
-            // Cleanup .env file on startup to ensure fresh start
-            let _ = std::fs::remove_file(".env");
-            Ok(())
-        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

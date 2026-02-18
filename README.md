@@ -5,7 +5,7 @@ A powerful desktop application built with Tauri, React, and Rust for automated p
 ## 🎯 Features
 
 - **AI-Powered Category Mapping**: Automatically map product categories to standardized taxonomy using OpenAI GPT or local AI models
-- **Secure API Key Management**: Session-based API credential storage with automatic cleanup on app close
+- **Secure API Key Management**: Local credential storage that persists across app restarts for seamless workflow
 - **Multiple AI Provider Support**:
   - OpenAI API (GPT-4, GPT-3.5, etc.)
   - Local AI servers (LM Studio, LocalAI, and other OpenAI-compatible APIs)
@@ -85,7 +85,7 @@ When you launch the application, you'll see the API configuration screen with tw
 3. Optionally enter an API key if required by your endpoint
 4. Click **"Continue"**
 
-**🔒 Security Note**: Your API credentials are stored only in a temporary `.env` file and are automatically deleted when you close the application.
+**🔒 Security Note**: Your API credentials are stored locally in a `.env` file and will persist across app restarts. The credentials are never sent anywhere except to your configured AI endpoint. To remove credentials, simply delete the `.env` file from the application directory.
 
 ### Step 2: Load Taxonomy
 
