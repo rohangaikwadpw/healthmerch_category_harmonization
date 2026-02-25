@@ -9,10 +9,11 @@ A powerful desktop application built with Tauri, React, and Rust for automated p
 - **Multiple AI Provider Support**:
   - OpenAI API (GPT-4, GPT-3.5, etc.)
   - Local AI servers (LM Studio, LocalAI, and other OpenAI-compatible APIs)
-- **Database Integration**: Fetch product data directly from PostgreSQL database
+- **Database Integration**: Fetch product data directly from PostgreSQL database with case-insensitive product ID search
 - **Batch Processing**: Process multiple products efficiently with automatic batching
 - **Confidence Scoring**: Get confidence levels (high/medium/low) for each category mapping
 - **CSV Import/Export**: Load products from CSV and export harmonized results
+- **Example CSV Downloads**: Built-in example CSV file generator to help understand required formats
 - **Real-time Progress Tracking**: Visual workflow with step-by-step progress indicators
 - **Beautiful UI**: Modern, responsive interface with dark mode support
 
@@ -90,19 +91,24 @@ When you launch the application, you'll see the API configuration screen with tw
 ### Step 2: Load Taxonomy
 
 1. Click **"Load Taxonomy CSV"**
-2. Select your taxonomy file containing:
+2. Click the 👁️ (eye) icon to view the expected CSV format
+3. Optionally click **"📥 Download Example CSV"** to get a sample file
+4. Select your taxonomy file containing:
    - Main Category
    - Sub-Category
    - Sub-Sub-Category
-3. The app will show the number of taxonomy entries loaded
+5. The app will show the number of taxonomy entries loaded
 
 ### Step 3: Load Products CSV
 
 1. Click **"Load Products CSV"**
-2. Select a CSV file with columns:
-   - `product_id`
+2. Click the 👁️ (eye) icon to view the expected format and download an example
+3. Select a CSV file with columns:
+   - `product_id` (case-insensitive)
    - `supplier_id`
-3. Preview the loaded products
+4. Preview the loaded products
+
+**Note**: Product ID search is case-insensitive, so "PROD001", "prod001", and "Prod001" will all match the same product.
 
 ### Step 4: Fetch from Database
 
@@ -167,6 +173,26 @@ healthmerch_category_harmonization/
 ├── package.json             # Node dependencies
 └── README.md                # This file
 ```
+
+## 📋 CSV File Formats
+
+### Taxonomy CSV Format
+```csv
+main_category,sub_category,sub_sub_category
+Health & Beauty,Skincare,Face Creams
+Electronics,Computers,Laptops
+Home & Garden,Furniture,Chairs
+```
+
+### Products CSV Format
+```csv
+product_id,supplier_id
+PROD001,SUP123
+PROD002,SUP456
+PROD003,SUP789
+```
+
+**Tip**: Use the 👁️ icon next to each "Load CSV" button in the app to view format examples and download sample files.
 
 ## 🛠️ Development
 
@@ -234,12 +260,17 @@ This project is licensed under the MIT License.
 - Ensure database is running and accessible
 - Check username/password credentials
 
-**3. "OpenAI API error: 401"**
+**3. "Product not found in database"**
+- Product IDs are matched case-insensitively (ABC123 = abc123 = Abc123)
+- Verify the product_id exists in your database
+- Check that the supplier_id is correct and formatted as UUID
+
+**4. "OpenAI API error: 401"**
 - API key is invalid or expired
 - Check that API key starts with `sk-`
 - Verify you have sufficient API credits
 
-**4. Application won't start**
+**5. Application won't start**
 - Run `yarn install` to ensure all dependencies are installed
 - Clear node_modules and reinstall: `rm -rf node_modules && yarn install`
 - Rebuild Rust components: `cd src-tauri && cargo clean && cargo build`
