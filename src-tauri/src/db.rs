@@ -22,10 +22,11 @@ pub struct ProductData {
 }
 
 pub async fn connect(connection_url: &str) -> Result<Client> {
-    // Validate connection URL
+    // Validate connection URL - only reject if it's empty or contains literal placeholder text
     if connection_url.is_empty() 
         || connection_url.contains("YOUR_POSTGRES_URL_HERE")
-        || connection_url.contains("username:password") {
+        || connection_url.contains("your_database")
+        || connection_url == "postgres://username:password@localhost:5432/your_database" {
         return Err(anyhow::anyhow!("invalid configuration"));
     }
 
