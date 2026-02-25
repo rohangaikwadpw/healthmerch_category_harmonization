@@ -68,7 +68,7 @@ pub async fn fetch_products(
                     product_data->>'productName' as product_name,
                     product_data->'ProductCategoryArray' as category_array
                 FROM products_ps_jsondump
-                WHERE product_id = $1 AND supplier_id = $2
+                WHERE LOWER(product_id) = LOWER($1) AND supplier_id = $2
                 "#,
                 &[&input.product_id, &supplier_uuid],
             )

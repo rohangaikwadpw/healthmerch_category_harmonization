@@ -245,6 +245,48 @@ function App() {
     }
   }
 
+  async function downloadTaxonomyExample() {
+    try {
+      const csvContent = `main_category,sub_category,sub_sub_category
+Health & Beauty,Skincare,Face Creams
+Electronics,Computers,Laptops
+Home & Garden,Furniture,Chairs`;
+      
+      const filePath = await save({
+        filters: [{ name: "CSV", extensions: ["csv"] }],
+        defaultPath: "taxonomy_example.csv",
+        title: "Save Taxonomy Example CSV",
+      });
+
+      if (filePath) {
+        await invoke("write_file", { path: filePath, content: csvContent });
+      }
+    } catch (e) {
+      console.error("Failed to download taxonomy example:", e);
+    }
+  }
+
+  async function downloadProductsExample() {
+    try {
+      const csvContent = `product_id,supplier_id
+PROD001,SUP123
+PROD002,SUP456
+PROD003,SUP789`;
+      
+      const filePath = await save({
+        filters: [{ name: "CSV", extensions: ["csv"] }],
+        defaultPath: "products_example.csv",
+        title: "Save Products Example CSV",
+      });
+
+      if (filePath) {
+        await invoke("write_file", { path: filePath, content: csvContent });
+      }
+    } catch (e) {
+      console.error("Failed to download products example:", e);
+    }
+  }
+
   async function handleFetchProducts() {
     try {
       setLoading(true);
@@ -600,6 +642,11 @@ function App() {
                 </table>
               </div>
               <p className="format-note">💡 The first row should contain column headers</p>
+              <div className="format-modal-actions">
+                <button className="download-example-btn" onClick={downloadTaxonomyExample}>
+                  📥 Download Example CSV
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -645,6 +692,11 @@ function App() {
                 </table>
               </div>
               <p className="format-note">💡 The first row should contain column headers</p>
+              <div className="format-modal-actions">
+                <button className="download-example-btn" onClick={downloadProductsExample}>
+                  📥 Download Example CSV
+                </button>
+              </div>
             </div>
           </div>
         </div>

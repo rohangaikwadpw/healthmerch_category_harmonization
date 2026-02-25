@@ -189,6 +189,13 @@ async fn load_taxonomy_content(state: State<'_, AppState>, content: String) -> R
 }
 
 #[tauri::command]
+async fn write_file(path: String, content: String) -> Result<(), String> {
+    fs::write(&path, content)
+        .map_err(|e| format!("Failed to write file: {}", e))?;
+    Ok(())
+}
+
+#[tauri::command]
 async fn parse_input_csv(csv_content: String) -> Result<Vec<ProductInput>, String> {
     let mut reader = csv::ReaderBuilder::new()
         .has_headers(true)
@@ -449,6 +456,7 @@ pub fn run() {
             load_config,
             load_taxonomy,
             load_taxonomy_content,
+            write_file,
             parse_input_csv,
             fetch_products_from_db,
             harmonize_categories,
