@@ -67,16 +67,9 @@ impl Config {
             
             Ok(config)
         } else {
-            // Try loading from environment variables
-            let config = Config::default();
-            
-            // Only create config.json if env vars are not set
-            if config.is_placeholder() {
-                let content = serde_json::to_string_pretty(&config)?;
-                fs::write(config_path, content)?;
-            }
-            
-            Ok(config)
+            // Config file doesn't exist - return default config
+            // Don't try to create it as the app might not have write permissions
+            Ok(Config::default())
         }
     }
 

@@ -145,8 +145,6 @@ async fn load_config(state: State<'_, AppState>) -> Result<bool, String> {
         PathBuf::from("src-tauri/config.json"),
     ];
 
-    let mut last_error = String::new();
-
     for config_path in &possible_paths {
         match Config::load(config_path) {
             Ok(config) => {
@@ -159,14 +157,17 @@ async fn load_config(state: State<'_, AppState>) -> Result<bool, String> {
                     return Ok(true); // Config is ready
                 }
             }
-            Err(e) => {
-                last_error = format!("{}", e);
+            Err(_e) => {
+                // Continue trying other paths
                 continue;
             }
         }
     }
 
-    Err(format!("Failed to load config from any location: {}", last_error))
+    // No config file found in any location - that's okay, user can enter credentials manually
+    // Store a default config with placeholder values
+    *state.config.lock().unwrap() = Some(Config::default());
+    Ok(false)
 }
 
 #[tauri::command]

@@ -171,13 +171,15 @@ function App() {
   async function initializeApp() {
     try {
       setLoadingMessage("Loading configuration...");
-      const isReady = await invoke<boolean>("load_config");
-      setConfigReady(isReady);
-
-      if (!isReady) {
-        setError("Please update config.json with your Postgres and OpenAI credentials, then restart the app.");
-        setStage("error");
-        return;
+      
+      // Try to load config, but it's optional
+      try {
+        const isReady = await invoke<boolean>("load_config");
+        setConfigReady(isReady);
+      } catch (e) {
+        // Config file not found or invalid - that's okay, we can work without it
+        console.log("Config file not loaded, will use manual entry:", e);
+        setConfigReady(false);
       }
 
       setStage("init");
