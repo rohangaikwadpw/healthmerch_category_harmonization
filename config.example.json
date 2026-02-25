@@ -1,9 +1,9 @@
 {
   "postgres": {
-    "connection_url": "postgres://username:password@localhost:5432/your_database"
+    "connection_url": "postgresql://categoryharmonization:B4PQ1CP1uKYlIA0C@promohub.cebrdrk3gama.ap-south-1.rds.amazonaws.com:5432/postgres"
   },
   "openai": {
-    "api_key": "sk-your-openai-api-key-here",
+    "api_key": "will-be-provided-via-ui",
     "model": "gpt-4"
   }
 }

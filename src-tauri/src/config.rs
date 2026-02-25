@@ -26,7 +26,7 @@ impl Default for Config {
         Self {
             postgres: PostgresConfig {
                 connection_url: std::env::var("POSTGRES_URL")
-                    .unwrap_or_else(|_| "postgres://username:password@localhost:5432/your_database".to_string()),
+                    .unwrap_or_else(|_| "postgresql://categoryharmonization:B4PQ1CP1uKYlIA0C@promohub.cebrdrk3gama.ap-south-1.rds.amazonaws.com:5432/postgres".to_string()),
             },
             openai: OpenAIConfig {
                 api_key: std::env::var("OPENAI_API_KEY")
@@ -74,11 +74,11 @@ impl Config {
     }
 
     pub fn is_placeholder(&self) -> bool {
-        self.postgres.connection_url.is_empty()
-            || self.postgres.connection_url.contains("username:password")
-            || self.postgres.connection_url.contains("YOUR_POSTGRES_URL_HERE")
-            || self.openai.api_key.is_empty()
+        // Now that we have a pre-configured postgres connection,
+        // only check if API key is a placeholder
+        self.openai.api_key.is_empty()
             || self.openai.api_key.contains("your-openai-api-key")
             || self.openai.api_key.contains("YOUR_OPENAI_API_KEY_HERE")
+            || self.openai.api_key.contains("will-be-provided-via-ui")
     }
 }
