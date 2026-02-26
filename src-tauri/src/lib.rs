@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Mutex;
-use tauri::State;
+use tauri::{Manager, State};
 use std::fs;
 
 // Application state
@@ -137,17 +137,24 @@ async fn delete_api_key(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn load_config(state: State<'_, AppState>) -> Result<bool, String> {
+async fn load_config(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<bool, String> {
     // Try multiple possible config locations
-    let possible_paths = [
+    let mut possible_paths = vec![
         PathBuf::from("config.json"),
         PathBuf::from("../config.json"),
         PathBuf::from("src-tauri/config.json"),
     ];
 
+    // Add resource directory path for bundled app
+    if let Ok(resource_path) = app.path().resource_dir() {
+        let resource_config = resource_path.join("config.json");
+        possible_paths.insert(0, resource_config);
+    }
+
     for config_path in &possible_paths {
         match Config::load(config_path) {
             Ok(config) => {
+                println!("Loaded config from: {:?}", config_path);
                 let is_placeholder = config.is_placeholder();
                 *state.config.lock().unwrap() = Some(config);
 
@@ -164,8 +171,8 @@ async fn load_config(state: State<'_, AppState>) -> Result<bool, String> {
         }
     }
 
-    // No config file found in any location - that's okay, user can enter credentials manually
-    // Store a default config with placeholder values
+    // No config file found in any location - use default config
+    println!("No config file found, using default configuration");
     *state.config.lock().unwrap() = Some(Config::default());
     Ok(false)
 }
@@ -227,14 +234,35 @@ async fn fetch_products_from_db(
     let config = state.config.lock().unwrap().clone()
         .ok_or("Config not loaded")?;
 
+    println!("=== Database Connection Attempt ===");
+    println!("Connection URL: postgresql://[user]:***@{}", 
+        config.postgres.connection_url.split('@').nth(1).unwrap_or("unknown"));
+    println!("Number of products to fetch: {}", inputs.len());
+    
     let client = db::connect(&config.postgres.connection_url)
         .await
-        .map_err(|e| format!("Database connection failed: {}", e))?;
+        .map_err(|e| {
+            eprintln!("=== DATABASE CONNECTION FAILED ===");
+            eprintln!("Error type: {:?}", e);
+            eprintln!("Error message: {}", e);
+            eprintln!("Possible causes:");
+            eprintln!("  1. Database user doesn't have LOGIN permission");
+            eprintln!("  2. Windows Firewall is blocking the connection");
+            eprintln!("  3. Antivirus software is blocking network access");
+            eprintln!("  4. Network connectivity issue");
+            eprintln!("=================================");
+            format!("Database connection failed: {}", e)
+        })?;
 
+    println!("✓ Successfully connected to database");
     let products = db::fetch_products(&client, &inputs)
         .await
-        .map_err(|e| format!("Failed to fetch products: {}", e))?;
+        .map_err(|e| {
+            eprintln!("Failed to fetch products: {}", e);
+            format!("Failed to fetch products: {}", e)
+        })?;
 
+    println!("✓ Successfully fetched {} products", products.len());
     *state.products.lock().unwrap() = products.clone();
 
     Ok(products)

@@ -31,6 +31,7 @@ pub async fn connect(connection_url: &str) -> Result<Client> {
     }
 
     // Create TLS connector for AWS RDS
+    // AWS RDS requires SSL but uses certificates that may not be in the system trust store
     let tls_connector = TlsConnector::builder()
         .danger_accept_invalid_certs(true)
         .build()?;
