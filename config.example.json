@@ -4,6 +4,6 @@
   },
   "openai": {
     "api_key": "will-be-provided-via-ui",
-    "model": "gpt-4"
+    "model": "gpt-4o-mini"
   }
 }

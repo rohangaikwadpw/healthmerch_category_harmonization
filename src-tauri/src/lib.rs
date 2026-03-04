@@ -4,7 +4,7 @@ mod openai;
 
 use config::Config;
 use db::{ProductData, ProductInput};
-use openai::{CategoryMapping, OpenAIClient};
+use openai::{CategoryMapping, OpenAIClient, ProductInfo};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -44,6 +44,7 @@ pub struct HarmonizedProduct {
     pub product_id: String,
     pub supplier_id: String,
     pub product_name: String,
+    pub description: String,
     pub raw_category: String,
     pub main_category: String,
     pub sub_category: String,
@@ -285,18 +286,43 @@ async fn harmonize_categories(
         return Err("No products loaded".to_string());
     }
 
-    // Get unique raw categories
-    let unique_categories: Vec<String> = products
-        .iter()
-        .map(|p| p.raw_category.clone())
-        .filter(|c| !c.is_empty())
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
+    // Validate API key is not a placeholder
+    if config.openai.api_key.is_empty() 
+        || config.openai.api_key.contains("your-openai-api-key")
+        || config.openai.api_key.contains("will-be-provided-via-ui") {
+        return Err("OpenAI API key not configured. Please enter your API key in the Settings.".to_string());
+    }
+
+    // Get unique products with their information for AI categorization
+    let unique_products: Vec<ProductInfo> = {
+        let mut seen = HashSet::new();
+        products
+            .iter()
+            .filter(|p| !p.raw_category.is_empty())
+            .filter_map(|p| {
+                if seen.insert(p.raw_category.clone()) {
+                    Some(ProductInfo {
+                        product_name: p.product_name.clone(),
+                        description: p.description.clone(),
+                        raw_category: p.raw_category.clone(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    };
+
+    if unique_products.is_empty() {
+        return Err("No products with categories to harmonize".to_string());
+    }
 
     // Get API base URL from state (if provided), otherwise from config
     let api_base_url = state.api_base_url.lock().unwrap().clone()
         .or_else(|| config.openai.base_url.clone());
+
+    println!("Harmonizing {} unique products using model: {}", unique_products.len(), config.openai.model);
+    println!("API base URL: {}", api_base_url.as_deref().unwrap_or("https://api.openai.com/v1"));
 
     // Call OpenAI to map categories
     let openai_client = OpenAIClient::new(
@@ -306,15 +332,15 @@ async fn harmonize_categories(
     );
 
     let (mappings, token_usage) = openai_client
-        .map_categories(&unique_categories, &taxonomy)
+        .map_categories(&unique_products, &taxonomy)
         .await
         .map_err(|e| format!("OpenAI mapping failed: {}", e))?;
 
     *state.mappings.lock().unwrap() = mappings.clone();
 
-    // Calculate estimated cost (GPT-4 pricing: $0.03 per 1k input tokens, $0.06 per 1k output tokens)
-    let estimated_cost = (token_usage.input_tokens as f64 / 1000.0 * 0.03) 
-        + (token_usage.output_tokens as f64 / 1000.0 * 0.06);
+    // Calculate estimated cost (GPT-4o-mini pricing: $0.15 per 1M input tokens, $0.60 per 1M output tokens)
+    let estimated_cost = (token_usage.input_tokens as f64 / 1_000_000.0 * 0.15) 
+        + (token_usage.output_tokens as f64 / 1_000_000.0 * 0.60);
 
     // Store token usage in state
     *state.token_usage.lock().unwrap() = TokenUsage {
@@ -334,6 +360,7 @@ async fn harmonize_categories(
                 product_id: p.product_id.clone(),
                 supplier_id: p.supplier_id.clone(),
                 product_name: p.product_name.clone(),
+                description: p.description.clone(),
                 raw_category: p.raw_category.clone(),
                 main_category: mapping.map(|m| m.main_category.clone()).unwrap_or_default(),
                 sub_category: mapping.map(|m| m.sub_category.clone()).unwrap_or_default(),

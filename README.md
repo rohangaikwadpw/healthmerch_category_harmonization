@@ -7,7 +7,7 @@ A powerful desktop application built with Tauri, React, and Rust for automated p
 - **AI-Powered Category Mapping**: Automatically map product categories to standardized taxonomy using OpenAI GPT or local AI models
 - **Secure API Key Management**: Local credential storage that persists across app restarts for seamless workflow
 - **Multiple AI Provider Support**:
-  - OpenAI API (GPT-4, GPT-3.5, etc.)
+  - OpenAI API (GPT-4o-mini recommended, GPT-4o, GPT-4, etc.)
   - Local AI servers (LM Studio, LocalAI, and other OpenAI-compatible APIs)
 - **Database Integration**: Fetch product data directly from PostgreSQL database with case-insensitive product ID search
 - **Batch Processing**: Process multiple products efficiently with automatic batching
@@ -57,7 +57,7 @@ Before you begin, ensure you have the following installed:
      },
      "openai": {
        "api_key": "your-api-key-here",
-       "model": "gpt-4"
+       "model": "gpt-4o-mini"
      }
    }
    ```
@@ -222,8 +222,10 @@ yarn lint
 ### AI Models Supported
 
 **OpenAI**:
-- `gpt-4`
+- `gpt-4o-mini` ⭐ (Recommended - Best balance of cost/quality: $0.15/$0.60 per 1M tokens)
+- `gpt-4o` (Better quality: $2.50/$10 per 1M tokens)
 - `gpt-4-turbo`
+- `gpt-4`
 - `gpt-3.5-turbo`
 
 **Local Models** (via LM Studio or similar):

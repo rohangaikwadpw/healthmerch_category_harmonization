@@ -47,6 +47,13 @@ pub struct CategoryMapping {
     pub confidence: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProductInfo {
+    pub product_name: String,
+    pub description: String,
+    pub raw_category: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TokenUsageStats {
     pub input_tokens: u32,
@@ -79,14 +86,14 @@ impl OpenAIClient {
 
     pub async fn map_categories(
         &self,
-        raw_categories: &[String],
+        products: &[ProductInfo],
         taxonomy: &str,
     ) -> Result<(HashMap<String, CategoryMapping>, TokenUsageStats)> {
         let mut mappings = HashMap::new();
         let mut total_usage = TokenUsageStats::default();
 
         // Process in batches of 10 to avoid token limits
-        for chunk in raw_categories.chunks(10) {
+        for chunk in products.chunks(10) {
             let (batch_mappings, batch_usage) = self.map_category_batch(chunk, taxonomy).await?;
             mappings.extend(batch_mappings);
             total_usage.input_tokens += batch_usage.input_tokens;
@@ -99,34 +106,42 @@ impl OpenAIClient {
 
     async fn map_category_batch(
         &self,
-        raw_categories: &[String],
+        products: &[ProductInfo],
         taxonomy: &str,
     ) -> Result<(HashMap<String, CategoryMapping>, TokenUsageStats)> {
-        let categories_list = raw_categories
+        let products_list = products
             .iter()
             .enumerate()
-            .map(|(i, c)| format!("{}. {}", i + 1, c))
+            .map(|(i, p)| {
+                format!(
+                    "{}. Product Name: {}\n   Description: {}\n   Current Category: {}",
+                    i + 1,
+                    p.product_name,
+                    if p.description.is_empty() { "N/A" } else { &p.description },
+                    p.raw_category
+                )
+            })
             .collect::<Vec<_>>()
-            .join("\n");
+            .join("\n\n");
 
         let prompt = format!(
-             r#"You are a product categorization expert. Map the following raw product categories to the standardized taxonomy provided.
+             r#"You are a product categorization expert. Map the following products to the standardized taxonomy provided.
 
 TAXONOMY:
 {}
 
-RAW CATEGORIES TO MAP:
+PRODUCTS TO CATEGORIZE:
 {}
 
-For each raw category, respond with a JSON array where each object has:
-- "raw_category": the original category string
+For each product, use the product name, description, and current category to determine the best matching category from the taxonomy. Respond with a JSON array where each object has:
+- "raw_category": the original category string from the product
 - "main_category": the matched Main Category from taxonomy
 - "sub_category": the matched Sub-Category from taxonomy (or empty string if none)
 - "sub_sub_category": the matched Sub-Sub-Category from taxonomy (or empty string if none)
-- "confidence": "high", "medium", or "low"
+- "confidence": "high", "medium", or "low" based on how well the product matches the category
 
-Respond ONLY with the JSON array, no other text."#,
-            taxonomy, categories_list
+Consider the product name and description to make more accurate categorization decisions. Respond ONLY with the JSON array, no other text."#,
+            taxonomy, products_list
         );
 
         let request = ChatRequest {
@@ -136,6 +151,10 @@ Respond ONLY with the JSON array, no other text."#,
                 content: prompt,
             }],
         };
+
+        println!("Sending request to: {}/chat/completions", self.base_url);
+        println!("Using model: {}", self.model);
+        println!("Processing {} products", products.len());
 
         let mut req = self
             .client
@@ -147,6 +166,9 @@ Respond ONLY with the JSON array, no other text."#,
             && self.api_key != "not-required" 
             && !self.api_key.contains("your-openai-api-key") {
             req = req.header("Authorization", format!("Bearer {}", self.api_key));
+            println!("API key configured (length: {})", self.api_key.len());
+        } else {
+            println!("WARNING: No valid API key configured");
         }
         
         let response = req
@@ -167,15 +189,55 @@ Respond ONLY with the JSON array, no other text."#,
             })?;
 
         if !response.status().is_success() {
+            let status = response.status();
             let error_text = response.text().await?;
-            anyhow::bail!("OpenAI API error: {}", error_text);
+            println!("API Error (status {}): {}", status, error_text);
+            anyhow::bail!("OpenAI API error (status {}): {}", status, error_text);
         }
 
-        let chat_response: ChatResponse = response.json().await?;
+        println!("Received successful response from API");
+
+        let chat_response: ChatResponse = response.json().await
+            .map_err(|e| {
+                println!("Failed to parse API response as JSON: {}", e);
+                anyhow::anyhow!("Failed to parse API response as JSON: {}. Make sure the API endpoint is correct.", e)
+            })?;
+        
+        if chat_response.choices.is_empty() {
+            println!("API returned no choices in response");
+            anyhow::bail!("API returned no choices in response");
+        }
+        
         let content = &chat_response.choices[0].message.content;
+        println!("Raw AI response (first 200 chars): {}", &content.chars().take(200).collect::<String>());
+
+        // Clean the response - remove markdown code blocks if present
+        let cleaned_content = content.trim()
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim();
+
+        if cleaned_content.is_empty() {
+            println!("API returned empty content after cleaning");
+            anyhow::bail!("API returned empty content");
+        }
+
+        println!("Cleaned content (first 200 chars): {}", &cleaned_content.chars().take(200).collect::<String>());
 
         // Parse the JSON response
-        let parsed: Vec<CategoryMapping> = serde_json::from_str(content.trim())?;
+        let parsed: Vec<CategoryMapping> = serde_json::from_str(cleaned_content)
+            .map_err(|e| {
+                println!("JSON parse error: {}", e);
+                anyhow::anyhow!(
+                    "Failed to parse AI response as category mappings. Error: {}\n\nAI Response:\n{}\n\nCleaned:\n{}",
+                    e,
+                    content,
+                    cleaned_content
+                )
+            })?;
+
+        println!("Successfully parsed {} category mappings", parsed.len());
 
         let mut mappings = HashMap::new();
         for mapping in parsed {

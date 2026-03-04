@@ -32,7 +32,7 @@ impl Default for Config {
                 api_key: std::env::var("OPENAI_API_KEY")
                     .unwrap_or_else(|_| "sk-your-openai-api-key-here".to_string()),
                 model: std::env::var("OPENAI_MODEL")
-                    .unwrap_or_else(|_| "gpt-4".to_string()),
+                    .unwrap_or_else(|_| "gpt-4o-mini".to_string()),
                 base_url: std::env::var("OPENAI_API_BASE").ok(),
             },
         }

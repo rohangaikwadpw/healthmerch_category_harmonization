@@ -14,6 +14,7 @@ interface ProductData {
   product_id: string;
   supplier_id: string;
   product_name: string;
+  description: string;
   category_array: string[];
   raw_category: string;
 }
@@ -23,6 +24,7 @@ interface HarmonizedProduct {
   product_id: string;
   supplier_id: string;
   product_name: string;
+  description: string;
   raw_category: string;
   main_category: string;
   sub_category: string;
@@ -312,7 +314,7 @@ PROD003,SUP789`;
     try {
       setLoading(true);
       const uniqueCategories = new Set(products.map((p) => p.raw_category).filter(Boolean));
-      setLoadingMessage(`Harmonizing ${uniqueCategories.size} unique categories via OpenAI...`);
+      setLoadingMessage(`Sending product names, descriptions, and categories to AI for harmonization of ${uniqueCategories.size} unique categories...`);
 
       const harmonized = await invoke<HarmonizedProduct[]>("harmonize_categories");
 
@@ -738,11 +740,26 @@ PROD003,SUP789`;
       {stage === "fetched" && products.length > 0 && (
         <div className="preview">
           <h3>Fetched Products ({products.length} found)</h3>
+          <div className="info-box" style={{ marginBottom: '1rem', padding: '1rem', backgroundColor: '#f0f9ff', borderLeft: '4px solid #3b82f6', borderRadius: '4px' }}>
+            <strong>🤖 AI Categorization Info:</strong>
+            <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.9rem' }}>
+              When you click "Harmonize Categories", the following data will be sent to OpenAI for intelligent categorization:
+            </p>
+            <ul style={{ margin: '0.5rem 0 0 1.5rem', fontSize: '0.9rem' }}>
+              <li><strong>Product Name</strong> - To understand what the product is</li>
+              <li><strong>Description</strong> - For additional context and details</li>
+              <li><strong>Raw Category</strong> - Current categorization to help map to taxonomy</li>
+            </ul>
+            <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.85rem', color: '#666' }}>
+              💡 The AI analyzes all three fields together to provide accurate category mappings with confidence scores.
+            </p>
+          </div>
           <table>
             <thead>
               <tr>
                 <th>Product ID</th>
                 <th>Name</th>
+                <th>Description</th>
                 <th>Raw Category</th>
               </tr>
             </thead>
@@ -751,12 +768,13 @@ PROD003,SUP789`;
                 <tr key={i}>
                   <td>{p.product_id}</td>
                   <td>{p.product_name}</td>
+                  <td>{p.description || 'N/A'}</td>
                   <td>{p.raw_category}</td>
                 </tr>
               ))}
               {products.length > 10 && (
                 <tr>
-                  <td colSpan={3} className="more">
+                  <td colSpan={4} className="more">
                     ... and {products.length - 10} more
                   </td>
                 </tr>

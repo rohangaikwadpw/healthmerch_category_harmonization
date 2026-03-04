@@ -17,6 +17,7 @@ pub struct ProductData {
     pub product_id: String,
     pub supplier_id: String,
     pub product_name: String,
+    pub description: String,
     pub category_array: Vec<String>,
     pub raw_category: String, // Joined category for display/grouping
 }
@@ -68,6 +69,7 @@ pub async fn fetch_products(
                     product_id,
                     supplier_id,
                     product_data->>'productName' as product_name,
+                    product_data->>'description' as description,
                     product_data->'ProductCategoryArray' as category_array
                 FROM products_ps_jsondump
                 WHERE LOWER(product_id) = LOWER($1) AND supplier_id = $2
@@ -81,6 +83,7 @@ pub async fn fetch_products(
             let product_id: String = row.get("product_id");
             let supplier_id: Uuid = row.get("supplier_id");
             let product_name: Option<String> = row.get("product_name");
+            let description: Option<String> = row.get("description");
             let category_json: Option<serde_json::Value> = row.get("category_array");
 
             // Parse category array from JSON - it's an array of {"category": "value"} objects
@@ -109,6 +112,7 @@ pub async fn fetch_products(
                 product_id,
                 supplier_id: supplier_id.to_string(),
                 product_name: product_name.unwrap_or_default(),
+                description: description.unwrap_or_default(),
                 category_array,
                 raw_category,
             });
