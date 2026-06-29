@@ -1,6 +1,6 @@
 {
   "postgres": {
-    "connection_url": "postgresql://categoryharmonization:B4PQ1CP1uKYlIA0C@promohub.cebrdrk3gama.ap-south-1.rds.amazonaws.com:5432/postgres"
+    "connection_url": "xyz"
   },
   "openai": {
     "api_key": "will-be-provided-via-ui",
