@@ -26,7 +26,7 @@ impl Default for Config {
         Self {
             postgres: PostgresConfig {
                 connection_url: std::env::var("POSTGRES_URL")
-                    .unwrap_or_else(|_| "postgresql://categoryharmonization:B4PQ1CP1uKYlIA0C@promohub.cebrdrk3gama.ap-south-1.rds.amazonaws.com:5432/postgres".to_string()),
+                    .unwrap_or_else(|_| "crediantials".to_string()),
             },
             openai: OpenAIConfig {
                 api_key: std::env::var("OPENAI_API_KEY")
